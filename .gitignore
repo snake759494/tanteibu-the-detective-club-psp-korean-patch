@@ -1,0 +1,22 @@
+# 게임 원본·산출물 (배포하지 않음)
+*.iso
+*.xdelta
+*.BIN
+*.bin
+*.gim
+*.blt
+*.ppst
+work/
+trans/
+fonts/
+# 글꼴·외부 실행 파일·이미지
+*.ttf
+*.otf
+*.exe
+*.dll
+*.png
+*.jpg
+*.zip
+# 파이썬
+__pycache__/
+*.pyc
