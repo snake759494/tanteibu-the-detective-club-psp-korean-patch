@@ -1,11 +1,11 @@
 {
- "version": "v1.0",
- "asset": "Tanteibu_TheDetectiveClub_KO_v1.0.xdelta",
- "asset_size": 3254716,
- "asset_sha256": "4f7725c5531646805893c14361fa27400a41ccf428f60de06f952f949f7d627f",
+ "version": "v1.1",
+ "asset": "Tanteibu_TheDetectiveClub_KO_v1.1.xdelta",
+ "asset_size": 3521621,
+ "asset_sha256": "a7194ffe52ae8d1ef2cf9625e7b29a2f853d6ba70d64ea7909e86e8f95e8df43",
  "source_iso_size": 539459584,
  "source_iso_md5": "122780f48ca200fc6281de8d410c175b",
  "source_iso_sha256": "a2c2e9b3261229a55c76934699dd28e256be469d4bc89e0cbfb8f39a60408969",
  "result_iso_size": 539459584,
- "result_iso_sha256": "c43a5a45294af9fd18829232ef01f3177af3ce71cbd684d258e71da340c37512"
+ "result_iso_sha256": "b0d62db8fc2e928580bda7d709a12ac3bac55e258d437b301c56e7e8b824d6eb"
 }

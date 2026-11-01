@@ -82,6 +82,8 @@ def main():
                                                    '탐정부 THE DETECTIVE CLUB -탐정과 유령과 괴도와-'), 'MEMSIZE', 1))
     for path, data in images.patched():
         iso.replace(path, data)
+    for path, data in images.home_pngs():
+        iso.replace(path, data)
     iso.close()
     print(f'built {OUT_ISO} scripts={len(ko)}/{len(names)} {time.time()-t0:.1f}s')
 

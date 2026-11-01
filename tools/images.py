@@ -581,7 +581,65 @@ def op_greylogo(im, o):
     im = paste(im, inn, cx - inn.width / 2, cy - inn.height / 2)
     return im
 
-OPS = dict(label=op_label, erase=op_erase, clear=op_clear, text=op_text, ransom=op_ransom, pink=op_pink, rebar=op_rebar, rect=op_rect, yesno=op_yesno, hilite=op_hilite, greylogo=op_greylogo, copy=op_copy, template=op_template, glow=op_glow)
+def op_titlelogo(im, o):
+    """title logo: redraw the plaid letters (black rim, white ring, brown line) and the ribbon caption."""
+    W, H = im.size
+    a = np.array(im)
+    rib = Image.new('L', im.size, 0); ImageDraw.Draw(rib).polygon([tuple(p) for p in o['ribbon']], fill=255)
+    rib = np.array(rib) > 0
+    # ribbon caption: erase dark text inside the inner polygon, draw the new one
+    inner = Image.new('L', im.size, 0); ImageDraw.Draw(inner).polygon([tuple(p) for p in o['inner']], fill=255)
+    inner = np.array(inner) > 0
+    txt = dilate(inner & (a[..., :3].astype(int).sum(-1) < o.get('thr', 560)), 1) & inner
+    r = inpaint(im, txt, 3)
+    cap = render(o['cap'], o.get('cfont', 'mEB'), o.get('csize', 20), tuple(o.get('cfill', (75, 25, 25, 255))))
+    bb = cap.getbbox(); cap = cap.crop(bb)
+    if cap.width > o.get('cmaxw', 150):
+        cap = cap.resize((o['cmaxw'], cap.height), Image.LANCZOS)
+    cap = cap.rotate(o.get('cangle', -5), Image.BICUBIC, expand=True)
+    cx, cy = o['ccenter']
+    r = paste(r, cap, cx - cap.width / 2, cy - cap.height / 2)
+    ribbon = np.array(r); ribbon[~rib] = 0
+    # letters
+    M = Image.new('L', im.size, 0)
+    for ch, x, y, ang, sz in o['chars']:
+        f = font(o.get('font', 'H'), sz)
+        g = Image.new('L', (sz * 2, sz * 2), 0)
+        ImageDraw.Draw(g).text((sz, sz), ch, font=f, fill=255, anchor='mm')
+        g = g.rotate(ang, Image.BICUBIC)
+        M.paste(Image.new('L', g.size, 255), (int(x - sz), int(y - sz)), g)
+    m = np.array(M).astype(np.float32) / 255
+    import cv2
+    def grow(n, blur=0):
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * n + 1, 2 * n + 1))
+        g = cv2.dilate(m, k)
+        return cv2.GaussianBlur(g, (0, 0), blur) if blur else g
+    yy, xx = np.mgrid[0:H, 0:W]
+    y0, y1 = o.get('grad', (20, 115))
+    t = np.clip((yy - y0) / (y1 - y0), 0, 1)[..., None]
+    top = np.array(o.get('top', (255, 216, 112))); bot = np.array(o.get('bot', (208, 96, 40)))
+    base = top * (1 - t) + bot * t
+    P = o.get('period', 14)
+    d1 = ((xx + yy) % P < 3); d2 = ((xx - yy) % P < 3)
+    l1 = ((xx + yy) % P == 7) | ((xx - yy) % P == 7)
+    shade = 1 - 0.09 * d1 - 0.09 * d2 + 0.07 * l1
+    plaid = np.clip(base * shade[..., None], 0, 255)
+    out = np.zeros((H, W, 4), np.float32)
+    def over(col, al):
+        al = np.clip(al, 0, 1)[..., None]
+        c = np.broadcast_to(np.array(col, np.float32)[:3] if np.ndim(col) == 1 else col, (H, W, 3))
+        oa = out[..., 3:] / 255
+        na = al + oa * (1 - al)
+        out[..., :3] = np.where(na > 0, (c * al + out[..., :3] * oa * (1 - al)) / np.maximum(na, 1e-6), 0)
+        out[..., 3:] = na * 255
+    over(np.array((0, 0, 0)), grow(o.get('rim', 8), 1.2))
+    over(np.array((255, 255, 255)), grow(3))
+    over(np.array((95, 45, 20)), grow(1))
+    over(plaid, m)
+    logo = Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), 'RGBA')
+    return Image.alpha_composite(logo, Image.fromarray(ribbon, 'RGBA'))
+
+OPS = dict(titlelogo=op_titlelogo, label=op_label, erase=op_erase, clear=op_clear, text=op_text, ransom=op_ransom, pink=op_pink, rebar=op_rebar, rect=op_rect, yesno=op_yesno, hilite=op_hilite, greylogo=op_greylogo, copy=op_copy, template=op_template, glow=op_glow)
 
 def apply(im, entry):
     ops = entry.get('ops') or [{'op': 'label', **{k: v for k, v in entry.items() if k not in ('file', 'k', 'jp')}}]
@@ -673,6 +731,33 @@ def patched():
             b = write_requant(b, im, e['k'], fr)
         out.append(('/PSP_GAME/USRDIR/' + f.replace('\\', '/'), b))
     return out
+
+# home-menu pictures: the title logo (title.gim #12) and English caption (#13) sit at these scale/offsets
+HOME = {'ICON0.PNG': ((0.39, 4, 19), (0.4, 7, 15)), 'PIC1.PNG': ((0.66, 248, 168), (0.665, 254, 162))}
+
+def home_pngs():
+    """yields (iso path, png bytes) for ICON0/PIC1 with the Korean logo pasted over the Japanese one"""
+    import cv2, io
+    b = open(os.path.join(USR, 'Menu/title/title.gim'), 'rb').read()
+    old, en = gim.to_png(b, 12), gim.to_png(b, 13)
+    e = [x for x in load_spec() if x['file'] == 'Menu/title/title.gim' and x['k'] == 12][0]
+    new = apply(old.copy(), e)
+    def alpha_at(pic, shape, s, x, y):
+        w, h = int(pic.width * s), int(pic.height * s)
+        a = np.zeros(shape, np.uint8); a[y:y+h, x:x+w] = np.array(pic.resize((w, h), Image.LANCZOS))[..., 3]
+        return a, (w, h)
+    for f, ((s, x, y), (s2, x2, y2)) in HOME.items():
+        O = np.array(Image.open(os.path.join(USR, '..', f)).convert('RGB'))
+        a, (w, h) = alpha_at(old, O.shape[:2], s, x, y)
+        m = cv2.dilate((a > 40).astype(np.uint8), np.ones((3, 3), np.uint8))
+        Q = Image.fromarray(cv2.inpaint(np.ascontiguousarray(O), m * 255, 5, cv2.INPAINT_TELEA)).convert('RGBA')
+        Q.alpha_composite(new.resize((w, h), Image.LANCZOS), (x, y))
+        N = np.array(Q.convert('RGB'))
+        a2, _ = alpha_at(en, O.shape[:2], s2, x2, y2)
+        k = cv2.dilate((a2 > 20).astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+        N[k] = O[k]
+        bio = io.BytesIO(); Image.fromarray(N).save(bio, 'PNG', optimize=True)
+        yield '/PSP_GAME/' + f, bio.getvalue()
 
 def preview(outdir, flt=None, scale=2):
     os.makedirs(outdir, exist_ok=True)
